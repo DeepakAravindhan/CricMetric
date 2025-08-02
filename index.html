@@ -1,0 +1,763 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Interactive Cricket Scorecard</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+    <!-- Chosen Palette: Modern Cricket Blues -->
+    <!-- Application Structure Plan: The application uses a two-phase structure. Phase 1 is a setup screen for entering team/player names and total overs. Phase 2 is the main interactive scorecard. The scorecard layout is a multi-column grid on desktops that stacks vertically on mobile devices for optimal usability. This structure separates the initial data entry from the primary scoring task, creating a clean and focused user flow. Key interactions (scoring, changing players) are handled through modals to keep the main interface uncluttered. A new modal for the full scorecard provides a comprehensive match summary. -->
+    <!-- Visualization & Content Choices: Report Info: Batting/Bowling Stats -> Goal: Organize/Inform -> Viz/Presentation Method: HTML Tables -> Interaction: Dynamic row updates and highlighting -> Justification: Tables provide a clear, standard, and dense view of cricket statistics, which is familiar to the target users. Report Info: Live Scoring -> Goal: Input Data -> Viz/Presentation Method: Grouped HTML Buttons -> Interaction: Click events trigger core JS logic -> Justification: Buttons are the most direct and fastest method for live scoring input. Report Info: This Over -> Goal: Inform -> Viz/Presentation Method: Styled HTML divs -> Interaction: Dynamically populated -> Justification: Provides immediate, ball-by-ball visual feedback. Report Info: Over-by-over summary -> Goal: Organize/Inform -> Viz/Presentation Method: Grid of styled divs with ball-by-ball details -> Interaction: Dynamically populated -> Justification: Provides a detailed, scannable history of the match flow. -->
+    <!-- CONFIRMATION: NO SVG graphics used. NO Mermaid JS used. -->
+    <style>
+        body { font-family: 'Inter', sans-serif; }
+        .ball-tag {
+            width: 2.5rem;
+            height: 2.5rem;
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            border-radius: 50%;
+            font-weight: 600;
+            font-size: 0.9rem;
+            transition: all 0.2s ease-in-out;
+        }
+        .ball-run { background-color: #e0e7ff; color: #3730a3; }
+        .ball-wicket { background-color: #fee2e2; color: #b91c1c; }
+        .ball-extra { background-color: #fef9c3; color: #a16207; }
+        .setup-input {
+            background-color: #f3f4f6;
+            border: 1px solid #d1d5db;
+            color: #111827;
+            font-size: 0.875rem;
+            border-radius: 0.375rem;
+            padding: 0.625rem;
+            width: 100%;
+            transition: border-color 0.2s, box-shadow 0.2s;
+        }
+        .setup-input:focus {
+            outline: none;
+            border-color: #4f46e5;
+            box-shadow: 0 0 0 2px #c7d2fe;
+        }
+    </style>
+</head>
+<body class="bg-gray-100 text-gray-800">
+
+    <div id="app-container" class="p-4 md:p-6 lg:p-8 max-w-7xl mx-auto">
+
+        <!-- Setup Screen -->
+        <div id="setup-screen">
+            <div class="bg-white p-6 md:p-8 rounded-xl shadow-lg">
+                <h1 class="text-3xl font-bold text-gray-900 mb-2">Cricket Scorecard Setup</h1>
+                <p class="text-gray-500 mb-6">Enter team details, player names, and match length to begin.</p>
+                
+                <div class="mb-6">
+                    <label for="total-overs-input" class="block text-lg font-semibold text-gray-700 mb-2 text-center">Total Overs per Innings</label>
+                    <input type="number" id="total-overs-input" class="setup-input max-w-xs mx-auto text-center text-lg" value="5" min="1">
+                </div>
+
+                <div class="grid grid-cols-1 md:grid-cols-2 gap-8">
+                    <!-- Team A -->
+                    <div>
+                        <h2 class="text-xl font-semibold mb-4 text-indigo-700">Team A</h2>
+                        <input type="text" id="team-a-name" placeholder="Enter Team A Name" class="setup-input mb-4" value="Lions XI">
+                        <div id="team-a-players" class="space-y-2"></div>
+                    </div>
+                    <!-- Team B -->
+                    <div>
+                        <h2 class="text-xl font-semibold mb-4 text-teal-700">Team B</h2>
+                        <input type="text" id="team-b-name" placeholder="Enter Team B Name" class="setup-input mb-4" value="Tigers XI">
+                        <div id="team-b-players" class="space-y-2"></div>
+                    </div>
+                </div>
+
+                <div class="mt-8 text-center">
+                    <button id="start-match-btn" class="bg-indigo-600 text-white font-bold py-3 px-8 rounded-lg hover:bg-indigo-700 transition-transform transform hover:scale-105 focus:outline-none focus:ring-4 focus:ring-indigo-300">
+                        Start Match
+                    </button>
+                </div>
+            </div>
+        </div>
+
+        <!-- Scorecard Screen -->
+        <div id="scorecard-screen" class="hidden">
+            <header class="bg-white p-4 rounded-xl shadow-md mb-6">
+                <div class="flex flex-col md:flex-row justify-between items-center">
+                    <h1 id="match-title" class="text-2xl font-bold text-gray-800 text-center md:text-left"></h1>
+                    <div class="flex space-x-2 mt-4 md:mt-0">
+                        <button id="full-scorecard-btn" class="bg-blue-600 text-white font-semibold py-2 px-4 rounded-lg hover:bg-blue-700 transition">Full Scorecard</button>
+                        <button id="undo-btn" class="bg-yellow-500 text-white font-semibold py-2 px-4 rounded-lg hover:bg-yellow-600 transition">Undo</button>
+                        <button id="new-match-btn" class="bg-red-600 text-white font-semibold py-2 px-4 rounded-lg hover:bg-red-700 transition">New Match</button>
+                    </div>
+                </div>
+                <div id="main-score-display" class="text-center mt-4">
+                    <p class="text-4xl md:text-5xl font-bold text-indigo-700 tracking-tight" id="score-display"></p>
+                    <p class="text-lg text-gray-600 mt-1" id="overs-display"></p>
+                    <p class="text-md text-red-600 font-semibold mt-2" id="target-display"></p>
+                    <div class="flex justify-center space-x-6 mt-2 text-sm">
+                        <p id="crr-display"></p>
+                        <p id="rrr-display"></p>
+                    </div>
+                     <p id="match-result-display" class="text-xl font-bold text-green-600 mt-4"></p>
+                </div>
+            </header>
+
+            <main class="grid grid-cols-1 lg:grid-cols-3 gap-6">
+                <!-- Left Column: Batting -->
+                <div class="lg:col-span-2 space-y-6">
+                    <div class="bg-white p-4 sm:p-6 rounded-xl shadow-md">
+                        <h2 class="text-xl font-bold mb-4">Batting</h2>
+                        <div class="overflow-x-auto">
+                            <table class="w-full text-sm text-left">
+                                <thead class="text-xs text-gray-500 uppercase bg-gray-50">
+                                    <tr>
+                                        <th scope="col" class="px-4 py-3">Batsman</th>
+                                        <th scope="col" class="px-4 py-3 text-center">R</th>
+                                        <th scope="col" class="px-4 py-3 text-center">B</th>
+                                        <th scope="col" class="px-4 py-3 text-center">4s</th>
+                                        <th scope="col" class="px-4 py-3 text-center">6s</th>
+                                        <th scope="col" class="px-4 py-3 text-center">SR</th>
+                                    </tr>
+                                </thead>
+                                <tbody id="batting-table"></tbody>
+                            </table>
+                        </div>
+                    </div>
+                    
+                    <div id="scoring-controls" class="bg-white p-4 sm:p-6 rounded-xl shadow-md">
+                        <h2 class="text-xl font-bold mb-4">Live Scoring</h2>
+                         <div class="mb-4">
+                            <h3 class="font-semibold mb-2">This Over:</h3>
+                            <div id="this-over-display" class="flex items-center space-x-2"></div>
+                        </div>
+                        <div class="grid grid-cols-4 sm:grid-cols-7 gap-2 mb-4">
+                            <button data-run="0" class="run-btn bg-gray-200 hover:bg-gray-300 font-bold py-3 rounded-lg transition">0</button>
+                            <button data-run="1" class="run-btn bg-gray-200 hover:bg-gray-300 font-bold py-3 rounded-lg transition">1</button>
+                            <button data-run="2" class="run-btn bg-gray-200 hover:bg-gray-300 font-bold py-3 rounded-lg transition">2</button>
+                            <button data-run="3" class="run-btn bg-gray-200 hover:bg-gray-300 font-bold py-3 rounded-lg transition">3</button>
+                            <button data-run="4" class="run-btn bg-blue-500 text-white hover:bg-blue-600 font-bold py-3 rounded-lg transition">4</button>
+                            <button data-run="6" class="run-btn bg-purple-500 text-white hover:bg-purple-600 font-bold py-3 rounded-lg transition">6</button>
+                        </div>
+                        <div class="grid grid-cols-2 sm:grid-cols-3 gap-2">
+                             <button id="wide-btn" class="extra-btn bg-yellow-400 hover:bg-yellow-500 font-bold py-3 rounded-lg transition">Wide</button>
+                             <button id="noball-btn" class="extra-btn bg-yellow-400 hover:bg-yellow-500 font-bold py-3 rounded-lg transition">No Ball</button>
+                             <button id="wicket-btn" class="bg-red-500 text-white hover:bg-red-600 font-bold py-3 rounded-lg transition">Wicket</button>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Right Column: Bowling & FOW -->
+                <div class="space-y-6">
+                    <div class="bg-white p-4 sm:p-6 rounded-xl shadow-md">
+                        <h2 class="text-xl font-bold mb-4">Bowling</h2>
+                        <div class="overflow-x-auto">
+                            <table class="w-full text-sm text-left">
+                                <thead class="text-xs text-gray-500 uppercase bg-gray-50">
+                                    <tr>
+                                        <th scope="col" class="px-4 py-3">Bowler</th>
+                                        <th scope="col" class="px-4 py-3 text-center">O</th>
+                                        <th scope="col" class="px-4 py-3 text-center">M</th>
+                                        <th scope="col" class="px-4 py-3 text-center">R</th>
+                                        <th scope="col" class="px-4 py-3 text-center">W</th>
+                                        <th scope="col" class="px-4 py-3 text-center">Econ</th>
+                                    </tr>
+                                </thead>
+                                <tbody id="bowling-table"></tbody>
+                            </table>
+                        </div>
+                    </div>
+                    <div class="bg-white p-4 sm:p-6 rounded-xl shadow-md">
+                        <h2 class="text-xl font-bold mb-4">Fall of Wickets</h2>
+                        <div id="fow-display" class="space-y-2 text-sm"></div>
+                    </div>
+                    <div class="bg-white p-4 sm:p-6 rounded-xl shadow-md">
+                        <h2 class="text-xl font-bold mb-4">Overs Summary</h2>
+                        <div id="overs-summary-display" class="space-y-2"></div>
+                    </div>
+                </div>
+            </main>
+        </div>
+    </div>
+
+    <!-- Modals -->
+    <div id="modal-backdrop" class="fixed inset-0 bg-black bg-opacity-50 hidden z-40"></div>
+    
+    <div id="player-selection-modal" class="fixed inset-0 flex items-center justify-center hidden z-50 p-4">
+        <div class="bg-white rounded-lg shadow-xl p-6 w-full max-w-md">
+            <h2 id="modal-title" class="text-xl font-bold mb-4">Select Players</h2>
+            <div class="space-y-4">
+                <div>
+                    <label for="on-strike-select" class="block text-sm font-medium text-gray-700">On Strike Batsman:</label>
+                    <select id="on-strike-select" class="setup-input mt-1"></select>
+                </div>
+                <div>
+                    <label for="non-striker-select" class="block text-sm font-medium text-gray-700">Non-Striker:</label>
+                    <select id="non-striker-select" class="setup-input mt-1"></select>
+                </div>
+                <div>
+                    <label for="bowler-select" class="block text-sm font-medium text-gray-700">Current Bowler:</label>
+                    <select id="bowler-select" class="setup-input mt-1"></select>
+                </div>
+            </div>
+            <div class="mt-6 text-right">
+                <button id="confirm-players-btn" class="bg-indigo-600 text-white font-semibold py-2 px-4 rounded-lg hover:bg-indigo-700 transition">Confirm</button>
+            </div>
+        </div>
+    </div>
+
+    <div id="wicket-modal" class="fixed inset-0 flex items-center justify-center hidden z-50 p-4">
+        <div class="bg-white rounded-lg shadow-xl p-6 w-full max-w-md">
+            <h2 class="text-xl font-bold mb-4">Wicket Details</h2>
+            <div class="space-y-4">
+                <div>
+                    <label for="player-out-select" class="block text-sm font-medium text-gray-700">Player Out:</label>
+                    <select id="player-out-select" class="setup-input mt-1"></select>
+                </div>
+                <div>
+                    <label for="dismissal-type-select" class="block text-sm font-medium text-gray-700">Dismissal Type:</label>
+                    <select id="dismissal-type-select" class="setup-input mt-1">
+                        <option>Bowled</option>
+                        <option>Caught</option>
+                        <option>LBW</option>
+                        <option>Run Out</option>
+                        <option>Stumped</option>
+                        <option>Hit Wicket</option>
+                    </select>
+                </div>
+                <div id="fielder-container" class="hidden">
+                    <label id="fielder-label" for="fielder-select" class="block text-sm font-medium text-gray-700">Fielder:</label>
+                    <select id="fielder-select" class="setup-input mt-1"></select>
+                </div>
+                <div id="new-batsman-container">
+                    <label for="new-batsman-select" class="block text-sm font-medium text-gray-700">New Batsman:</label>
+                    <select id="new-batsman-select" class="setup-input mt-1"></select>
+                </div>
+            </div>
+            <div class="mt-6 text-right">
+                <button id="confirm-wicket-btn" class="bg-red-600 text-white font-semibold py-2 px-4 rounded-lg hover:bg-red-700 transition">Confirm Wicket</button>
+            </div>
+        </div>
+    </div>
+
+    <div id="full-scorecard-modal" class="fixed inset-0 flex items-center justify-center hidden z-50 p-4">
+        <div class="bg-white rounded-lg shadow-xl p-6 w-full max-w-4xl max-h-[90vh] overflow-y-auto">
+            <div class="flex justify-between items-center mb-4">
+                <h2 class="text-2xl font-bold">Full Match Scorecard</h2>
+                <button id="close-full-scorecard-btn" class="text-gray-500 hover:text-gray-800 text-2xl font-bold">&times;</button>
+            </div>
+            <div id="full-scorecard-content" class="space-y-8"></div>
+        </div>
+    </div>
+
+
+<script>
+document.addEventListener('DOMContentLoaded', () => {
+    const App = {
+        state: null,
+        history: [],
+
+        elements: {
+            setupScreen: document.getElementById('setup-screen'),
+            scorecardScreen: document.getElementById('scorecard-screen'),
+            totalOversInput: document.getElementById('total-overs-input'),
+            teamAName: document.getElementById('team-a-name'),
+            teamBName: document.getElementById('team-b-name'),
+            teamAPlayers: document.getElementById('team-a-players'),
+            teamBPlayers: document.getElementById('team-b-players'),
+            startMatchBtn: document.getElementById('start-match-btn'),
+            matchTitle: document.getElementById('match-title'),
+            scoreDisplay: document.getElementById('score-display'),
+            oversDisplay: document.getElementById('overs-display'),
+            targetDisplay: document.getElementById('target-display'),
+            crrDisplay: document.getElementById('crr-display'),
+            rrrDisplay: document.getElementById('rrr-display'),
+            matchResultDisplay: document.getElementById('match-result-display'),
+            battingTable: document.getElementById('batting-table'),
+            bowlingTable: document.getElementById('bowling-table'),
+            fowDisplay: document.getElementById('fow-display'),
+            oversSummaryDisplay: document.getElementById('overs-summary-display'),
+            thisOverDisplay: document.getElementById('this-over-display'),
+            scoringControls: document.getElementById('scoring-controls'),
+            runBtns: document.querySelectorAll('.run-btn'),
+            wideBtn: document.getElementById('wide-btn'),
+            noballBtn: document.getElementById('noball-btn'),
+            wicketBtn: document.getElementById('wicket-btn'),
+            undoBtn: document.getElementById('undo-btn'),
+            newMatchBtn: document.getElementById('new-match-btn'),
+            fullScorecardBtn: document.getElementById('full-scorecard-btn'),
+            modalBackdrop: document.getElementById('modal-backdrop'),
+            playerSelectionModal: document.getElementById('player-selection-modal'),
+            modalTitle: document.getElementById('modal-title'),
+            onStrikeSelect: document.getElementById('on-strike-select'),
+            nonStrikerSelect: document.getElementById('non-striker-select'),
+            bowlerSelect: document.getElementById('bowler-select'),
+            confirmPlayersBtn: document.getElementById('confirm-players-btn'),
+            wicketModal: document.getElementById('wicket-modal'),
+            playerOutSelect: document.getElementById('player-out-select'),
+            dismissalTypeSelect: document.getElementById('dismissal-type-select'),
+            fielderContainer: document.getElementById('fielder-container'),
+            fielderLabel: document.getElementById('fielder-label'),
+            fielderSelect: document.getElementById('fielder-select'),
+            newBatsmanContainer: document.getElementById('new-batsman-container'),
+            newBatsmanSelect: document.getElementById('new-batsman-select'),
+            confirmWicketBtn: document.getElementById('confirm-wicket-btn'),
+            fullScorecardModal: document.getElementById('full-scorecard-modal'),
+            fullScorecardContent: document.getElementById('full-scorecard-content'),
+            closeFullScorecardBtn: document.getElementById('close-full-scorecard-btn'),
+        },
+
+        init() {
+            this.generatePlayerInputs();
+            this.addEventListeners();
+            this.resetState();
+        },
+
+        generatePlayerInputs() {
+            for (let i = 0; i < 11; i++) {
+                this.elements.teamAPlayers.innerHTML += `<input type="text" class="setup-input" placeholder="Player ${i + 1}" value="Player A${i+1}">`;
+                this.elements.teamBPlayers.innerHTML += `<input type="text" class="setup-input" placeholder="Player ${i + 1}" value="Player B${i+1}">`;
+            }
+        },
+
+        resetState() {
+            this.state = {
+                teamA: { name: '', players: [] },
+                teamB: { name: '', players: [] },
+                totalOvers: 20,
+                innings: 1,
+                battingTeam: null,
+                bowlingTeam: null,
+                score: 0,
+                wickets: 0,
+                overs: 0,
+                balls: 0,
+                thisOver: [],
+                thisOverRuns: 0,
+                oversHistory: [],
+                fallOfWickets: [],
+                onStrikeBatsman: null,
+                nonStrikeBatsman: null,
+                currentBowler: null,
+                isMatchOver: false,
+                target: null,
+                matchResult: '',
+                innings1Data: null,
+            };
+            this.history = [];
+        },
+        
+        saveState() {
+            this.history.push(JSON.parse(JSON.stringify(this.state)));
+        },
+
+        undo() {
+            if (this.history.length > 1) {
+                this.history.pop();
+                this.state = this.history[this.history.length - 1];
+                this.render();
+            } else {
+                alert('No more actions to undo.');
+            }
+        },
+
+        addEventListeners() {
+            this.elements.startMatchBtn.addEventListener('click', () => this.startMatch());
+            this.elements.newMatchBtn.addEventListener('click', () => window.location.reload());
+            this.elements.undoBtn.addEventListener('click', () => this.undo());
+            this.elements.fullScorecardBtn.addEventListener('click', () => this.openFullScorecard());
+            this.elements.closeFullScorecardBtn.addEventListener('click', () => this.closeModal(this.elements.fullScorecardModal));
+            
+            this.elements.runBtns.forEach(btn => {
+                btn.addEventListener('click', () => this.addDelivery({ runs: parseInt(btn.dataset.run) }));
+            });
+
+            this.elements.wideBtn.addEventListener('click', () => this.addDelivery({ runs: 0, isExtra: true, extraType: 'Wd' }));
+            this.elements.noballBtn.addEventListener('click', () => this.addDelivery({ runs: 0, isExtra: true, extraType: 'Nb', isNoBall: true }));
+            this.elements.wicketBtn.addEventListener('click', () => this.openWicketModal());
+
+            this.elements.confirmPlayersBtn.addEventListener('click', () => this.confirmPlayers());
+            this.elements.confirmWicketBtn.addEventListener('click', () => this.confirmWicket());
+            this.elements.dismissalTypeSelect.addEventListener('change', (e) => this.handleDismissalTypeChange(e.target.value));
+        },
+
+        startMatch() {
+            this.resetState();
+            this.state.totalOvers = parseInt(this.elements.totalOversInput.value, 10) || 20;
+            this.state.teamA.name = this.elements.teamAName.value.trim() || 'Team A';
+            this.state.teamB.name = this.elements.teamBName.value.trim() || 'Team B';
+
+            const createPlayer = (prefix, i) => ({ id: `${prefix}${i}`, name: `Player ${prefix}${i+1}`, runs: 0, balls: 0, fours: 0, sixes: 0, status: 'Did not bat', ballsBowled: 0, maidens: 0, runsConceded: 0, wickets: 0 });
+            
+            this.state.teamA.players = Array.from(this.elements.teamAPlayers.querySelectorAll('input')).map((input, i) => ({ ...createPlayer('A', i), name: input.value.trim() || `Player A${i+1}` }));
+            this.state.teamB.players = Array.from(this.elements.teamBPlayers.querySelectorAll('input')).map((input, i) => ({ ...createPlayer('B', i), name: input.value.trim() || `Player B${i+1}` }));
+
+            this.state.battingTeam = this.state.teamA;
+            this.state.bowlingTeam = this.state.teamB;
+
+            this.elements.setupScreen.classList.add('hidden');
+            this.elements.scorecardScreen.classList.remove('hidden');
+            
+            this.saveState();
+            this.openPlayerSelectionModal("Select Opening Players");
+        },
+        
+        openModal(modal) {
+            this.elements.modalBackdrop.classList.remove('hidden');
+            modal.classList.remove('hidden');
+        },
+
+        closeModal(modal) {
+            this.elements.modalBackdrop.classList.add('hidden');
+            modal.classList.add('hidden');
+        },
+
+        openPlayerSelectionModal(title) {
+            this.elements.modalTitle.textContent = title;
+            const populateSelect = (select, players, exclude = []) => {
+                select.innerHTML = '';
+                players.forEach(p => {
+                    if (!exclude.includes(p.id) && p.status !== 'Out' && !p.status.toLowerCase().includes('bowled') && !p.status.toLowerCase().includes('caught')) {
+                        select.innerHTML += `<option value="${p.id}">${p.name}</option>`;
+                    }
+                });
+            };
+            
+            populateSelect(this.elements.onStrikeSelect, this.state.battingTeam.players);
+            populateSelect(this.elements.nonStrikerSelect, this.state.battingTeam.players, [this.elements.onStrikeSelect.value]);
+            populateSelect(this.elements.bowlerSelect, this.state.bowlingTeam.players, [this.state.currentBowler]);
+
+            this.elements.onStrikeSelect.onchange = () => {
+                 populateSelect(this.elements.nonStrikerSelect, this.state.battingTeam.players, [this.elements.onStrikeSelect.value]);
+            };
+
+            this.openModal(this.elements.playerSelectionModal);
+        },
+
+        confirmPlayers() {
+            this.state.onStrikeBatsman = this.elements.onStrikeSelect.value;
+            this.state.nonStrikeBatsman = this.elements.nonStrikerSelect.value;
+            this.state.currentBowler = this.elements.bowlerSelect.value;
+            
+            if (this.findPlayer(this.state.onStrikeBatsman).status === 'Did not bat') this.findPlayer(this.state.onStrikeBatsman).status = 'Not Out';
+            if (this.findPlayer(this.state.nonStrikeBatsman).status === 'Did not bat') this.findPlayer(this.state.nonStrikeBatsman).status = 'Not Out';
+
+            this.closeModal(this.elements.playerSelectionModal);
+            this.saveState();
+            this.render();
+        },
+        
+        handleDismissalTypeChange(type) {
+            if (type === 'Caught' || type === 'Stumped') {
+                this.elements.fielderContainer.classList.remove('hidden');
+                this.elements.fielderLabel.textContent = type === 'Caught' ? 'Fielder:' : 'Keeper:';
+                this.elements.fielderSelect.innerHTML = this.state.bowlingTeam.players
+                    .map(p => `<option value="${p.id}">${p.name}</option>`).join('');
+            } else {
+                this.elements.fielderContainer.classList.add('hidden');
+            }
+        },
+        
+        openWicketModal() {
+            this.elements.playerOutSelect.innerHTML = `
+                <option value="${this.state.onStrikeBatsman}">${this.findPlayer(this.state.onStrikeBatsman).name}</option>
+                <option value="${this.state.nonStrikeBatsman}">${this.findPlayer(this.state.nonStrikeBatsman).name}</option>
+            `;
+            const nextBatsmen = this.state.battingTeam.players.filter(p => p.status === 'Did not bat');
+            this.elements.newBatsmanSelect.innerHTML = nextBatsmen.map(p => `<option value="${p.id}">${p.name}</option>`).join('');
+
+            if (nextBatsmen.length === 0 || this.state.wickets >= 10) {
+                this.elements.newBatsmanContainer.classList.add('hidden');
+            } else {
+                this.elements.newBatsmanContainer.classList.remove('hidden');
+            }
+            
+            this.handleDismissalTypeChange(this.elements.dismissalTypeSelect.value);
+            this.openModal(this.elements.wicketModal);
+        },
+
+        confirmWicket() {
+            const playerOutId = this.elements.playerOutSelect.value;
+            const dismissalType = this.elements.dismissalTypeSelect.value;
+            const fielderId = (dismissalType === 'Caught' || dismissalType === 'Stumped') ? this.elements.fielderSelect.value : null;
+            const newBatsmanId = this.elements.newBatsmanSelect.value;
+            
+            this.closeModal(this.elements.wicketModal);
+            this.addDelivery({ runs: 0, isWicket: true, playerOutId, dismissalType, fielderId, newBatsmanId });
+        },
+
+        findPlayer(id) {
+            return this.state.teamA.players.find(p => p.id === id) || this.state.teamB.players.find(p => p.id === id);
+        },
+
+        addDelivery(delivery) {
+            if (this.state.isMatchOver) return;
+            this.saveState();
+
+            const bowler = this.findPlayer(this.state.currentBowler);
+            const onStrike = this.findPlayer(this.state.onStrikeBatsman);
+
+            this.state.score += delivery.runs;
+            if (!delivery.isExtra) {
+                bowler.runsConceded += delivery.runs;
+            }
+            this.state.thisOverRuns += delivery.runs;
+
+            if (delivery.isExtra) {
+                this.state.thisOver.push(delivery.extraType);
+            } else {
+                this.state.balls++;
+                onStrike.balls++;
+                onStrike.runs += delivery.runs;
+                bowler.ballsBowled++;
+                if(delivery.runs === 4) onStrike.fours++;
+                if(delivery.runs === 6) onStrike.sixes++;
+                this.state.thisOver.push(delivery.isWicket ? 'W' : delivery.runs);
+            }
+            
+            if (delivery.isWicket) {
+                this.state.wickets++;
+                const playerOut = this.findPlayer(delivery.playerOutId);
+                const bowlerName = bowler.name;
+                let dismissalString = '';
+
+                switch(delivery.dismissalType) {
+                    case 'Caught':
+                        const fielder = this.findPlayer(delivery.fielderId);
+                        dismissalString = `c ${fielder.name} b ${bowlerName}`;
+                        bowler.wickets++;
+                        break;
+                    case 'Stumped':
+                        const keeper = this.findPlayer(delivery.fielderId);
+                        dismissalString = `st ${keeper.name} b ${bowlerName}`;
+                        bowler.wickets++;
+                        break;
+                    case 'Bowled':
+                        dismissalString = `b ${bowlerName}`;
+                        bowler.wickets++;
+                        break;
+                    case 'LBW':
+                        dismissalString = `lbw b ${bowlerName}`;
+                        bowler.wickets++;
+                        break;
+                    default:
+                        dismissalString = delivery.dismissalType;
+                }
+                playerOut.status = dismissalString;
+
+                this.state.fallOfWickets.push(`${this.state.wickets}-${this.state.score} (${playerOut.name}, ${this.state.overs}.${this.state.balls})`);
+
+                if (this.state.wickets < 10) {
+                    if(delivery.playerOutId === this.state.onStrikeBatsman) {
+                        this.state.onStrikeBatsman = delivery.newBatsmanId;
+                    } else {
+                        this.state.nonStrikeBatsman = delivery.newBatsmanId;
+                    }
+                    if(delivery.newBatsmanId) this.findPlayer(delivery.newBatsmanId).status = 'Not Out';
+                }
+            }
+
+            if (delivery.runs % 2 !== 0 && !delivery.isExtra) {
+                [this.state.onStrikeBatsman, this.state.nonStrikeBatsman] = [this.state.nonStrikeBatsman, this.state.onStrikeBatsman];
+            }
+
+            if (this.state.balls === 6) {
+                this.state.overs++;
+                this.state.balls = 0;
+                this.state.oversHistory.push({over: this.state.overs, balls: [...this.state.thisOver]});
+                if(this.state.thisOverRuns === 0) bowler.maidens++;
+                this.state.thisOver = [];
+                this.state.thisOverRuns = 0;
+                [this.state.onStrikeBatsman, this.state.nonStrikeBatsman] = [this.state.nonStrikeBatsman, this.state.onStrikeBatsman];
+                
+                if (this.state.overs < this.state.totalOvers) {
+                     this.openPlayerSelectionModal("Select Next Bowler");
+                }
+            }
+            
+            const isOversFinished = this.state.overs === this.state.totalOvers;
+            const isAllOut = this.state.wickets >= 10;
+            const isTargetChased = this.state.innings === 2 && this.state.score >= this.state.target;
+
+            if (!this.state.isMatchOver && (isOversFinished || isAllOut || isTargetChased)) {
+                this.endInnings();
+            }
+
+            this.render();
+        },
+        
+        endInnings() {
+            if (this.state.innings === 1) {
+                this.state.innings1Data = JSON.parse(JSON.stringify({
+                    battingTeam: this.state.battingTeam,
+                    bowlingTeam: this.state.bowlingTeam,
+                    score: this.state.score,
+                    wickets: this.state.wickets,
+                    overs: this.state.overs,
+                    balls: this.state.balls,
+                    oversHistory: this.state.oversHistory
+                }));
+
+                alert(`Innings 1 Over! ${this.state.battingTeam.name} scored ${this.state.score}/${this.state.wickets}. Target for ${this.state.bowlingTeam.name} is ${this.state.score + 1}.`);
+                this.state.innings = 2;
+                this.state.target = this.state.score + 1;
+                [this.state.battingTeam, this.state.bowlingTeam] = [this.state.bowlingTeam, this.state.battingTeam];
+                this.state.score = 0; this.state.wickets = 0; this.state.overs = 0; this.state.balls = 0;
+                this.state.thisOver = []; this.state.thisOverRuns = 0; this.state.fallOfWickets = []; this.state.oversHistory = [];
+                this.state.onStrikeBatsman = null; this.state.nonStrikeBatsman = null; this.state.currentBowler = null;
+                this.openPlayerSelectionModal("Select Opening Players for 2nd Innings");
+            } else {
+                this.state.isMatchOver = true;
+                if (this.state.score >= this.state.target) {
+                    this.state.matchResult = `${this.state.battingTeam.name} won by ${10 - this.state.wickets} wickets.`;
+                } else if (this.state.score === this.state.target - 1) {
+                    this.state.matchResult = 'Match Tied.';
+                } else {
+                    this.state.matchResult = `${this.state.bowlingTeam.name} won by ${this.state.target - 1 - this.state.score} runs.`;
+                }
+                alert(`Match Over! ${this.state.matchResult}`);
+            }
+        },
+
+        openFullScorecard() {
+            this.renderFullScorecard();
+            this.openModal(this.elements.fullScorecardModal);
+        },
+
+        renderFullScorecard() {
+            let content = '';
+            if (this.state.innings1Data) {
+                content += this.getInningsScorecardHTML(this.state.innings1Data, 1);
+            }
+            const currentInningsData = {
+                battingTeam: this.state.battingTeam,
+                bowlingTeam: this.state.bowlingTeam,
+                score: this.state.score,
+                wickets: this.state.wickets,
+                overs: this.state.overs,
+                balls: this.state.balls,
+                oversHistory: this.state.oversHistory
+            };
+            content += this.getInningsScorecardHTML(currentInningsData, this.state.innings);
+            
+            this.elements.fullScorecardContent.innerHTML = content;
+        },
+
+        getInningsScorecardHTML(inningsData, inningsNum) {
+            const { battingTeam, bowlingTeam, score, wickets, overs, balls, oversHistory } = inningsData;
+            
+            const battingRows = battingTeam.players.map(p => {
+                const sr = p.balls > 0 ? ((p.runs / p.balls) * 100).toFixed(2) : '0.00';
+                return `<tr><td class="px-4 py-2 whitespace-nowrap">${p.name}<br><span class="text-xs text-gray-500">${p.status}</span></td><td class="px-4 py-2 text-center">${p.runs}</td><td class="px-4 py-2 text-center">${p.balls}</td><td class="px-4 py-2 text-center">${p.fours}</td><td class="px-4 py-2 text-center">${p.sixes}</td><td class="px-4 py-2 text-center">${sr}</td></tr>`;
+            }).join('');
+
+            const bowlingRows = bowlingTeam.players.filter(p => p.ballsBowled > 0).map(p => {
+                const oversDisplay = `${Math.floor(p.ballsBowled / 6)}.${p.ballsBowled % 6}`;
+                const econ = p.ballsBowled > 0 ? ((p.runsConceded / p.ballsBowled) * 6).toFixed(2) : '0.00';
+                return `<tr><td class="px-4 py-2 whitespace-nowrap">${p.name}</td><td class="px-4 py-2 text-center">${oversDisplay}</td><td class="px-4 py-2 text-center">${p.maidens}</td><td class="px-4 py-2 text-center">${p.runsConceded}</td><td class="px-4 py-2 text-center">${p.wickets}</td><td class="px-4 py-2 text-center">${econ}</td></tr>`;
+            }).join('');
+
+            const oversSummaryRows = oversHistory.map(o => {
+                const ballTags = o.balls.map(ball => {
+                    let ballClass = 'ball-run';
+                    if (ball === 'W') ballClass = 'ball-wicket';
+                    if (ball === 'Wd' || ball === 'Nb') ballClass = 'ball-extra';
+                    return `<div class="ball-tag !w-8 !h-8 !text-xs ${ballClass}">${ball}</div>`;
+                }).join('');
+                return `<div class="flex items-center gap-3 py-1"><div class="font-bold w-16">Over ${o.over}:</div><div class="flex items-center space-x-1">${ballTags}</div></div>`;
+            }).join('');
+
+            return `
+                <div>
+                    <h3 class="text-xl font-bold mb-2 text-indigo-700">${battingTeam.name} - Innings ${inningsNum} (${score}/${wickets} in ${overs}.${balls} overs)</h3>
+                    <div class="mb-6">
+                        <h4 class="text-lg font-semibold mb-2">Batting</h4>
+                        <table class="w-full text-sm text-left"><thead class="text-xs text-gray-500 uppercase bg-gray-50"><tr><th scope="col" class="px-4 py-3">Batsman</th><th scope="col" class="px-4 py-3 text-center">R</th><th scope="col" class="px-4 py-3 text-center">B</th><th scope="col" class="px-4 py-3 text-center">4s</th><th scope="col" class="px-4 py-3 text-center">6s</th><th scope="col" class="px-4 py-3 text-center">SR</th></tr></thead><tbody>${battingRows}</tbody></table>
+                    </div>
+                    <div class="mb-6">
+                        <h4 class="text-lg font-semibold mb-2">Bowling</h4>
+                        <table class="w-full text-sm text-left"><thead class="text-xs text-gray-500 uppercase bg-gray-50"><tr><th scope="col" class="px-4 py-3">Bowler</th><th scope="col" class="px-4 py-3 text-center">O</th><th scope="col" class="px-4 py-3 text-center">M</th><th scope="col" class="px-4 py-3 text-center">R</th><th scope="col" class="px-4 py-3 text-center">W</th><th scope="col" class="px-4 py-3 text-center">Econ</th></tr></thead><tbody>${bowlingRows}</tbody></table>
+                    </div>
+                    <div>
+                        <h4 class="text-lg font-semibold mb-2">Overs Summary</h4>
+                        <div class="space-y-1">${oversSummaryRows}</div>
+                    </div>
+                </div>
+            `;
+        },
+
+        render() {
+            const { battingTeam, bowlingTeam, score, wickets, overs, balls, onStrikeBatsman, nonStrikeBatsman, currentBowler, innings, target } = this.state;
+            if (!battingTeam) return;
+
+            this.elements.matchTitle.textContent = `${battingTeam.name} vs ${bowlingTeam.name} (${this.state.totalOvers} Over Match)`;
+            this.elements.scoreDisplay.textContent = `${score}/${wickets}`;
+            this.elements.oversDisplay.textContent = `Overs: ${overs}.${balls}`;
+
+            const totalBalls = overs * 6 + balls;
+            this.elements.crrDisplay.textContent = totalBalls > 0 ? `CRR: ${(score / (totalBalls / 6)).toFixed(2)}` : 'CRR: 0.00';
+            
+            if (innings === 2 && target) {
+                this.elements.targetDisplay.textContent = `Target: ${target}`;
+                const ballsRemaining = this.state.totalOvers * 6 - totalBalls;
+                const runsNeeded = target - score;
+                this.elements.rrrDisplay.textContent = ballsRemaining > 0 && runsNeeded > 0 ? `RRR: ${(runsNeeded / (ballsRemaining / 6)).toFixed(2)}` : '';
+            } else {
+                this.elements.targetDisplay.textContent = '';
+                this.elements.rrrDisplay.textContent = '';
+            }
+
+            this.elements.battingTable.innerHTML = battingTeam.players.map(p => {
+                const sr = p.balls > 0 ? ((p.runs / p.balls) * 100).toFixed(2) : '0.00';
+                const isStriker = p.id === onStrikeBatsman;
+                const rowClass = isStriker ? 'bg-indigo-100 font-bold' : '';
+                const nameDisplay = `${p.name} ${isStriker ? '*' : ''}`;
+                return `<tr class="${rowClass}"><td class="px-4 py-2 whitespace-nowrap">${nameDisplay}<br><span class="text-xs text-gray-500">${p.status}</span></td><td class="px-4 py-2 text-center">${p.runs}</td><td class="px-4 py-2 text-center">${p.balls}</td><td class="px-4 py-2 text-center">${p.fours}</td><td class="px-4 py-2 text-center">${p.sixes}</td><td class="px-4 py-2 text-center">${sr}</td></tr>`;
+            }).join('');
+
+            this.elements.bowlingTable.innerHTML = bowlingTeam.players.filter(p => p.ballsBowled > 0).map(p => {
+                const ballsBowled = p.ballsBowled;
+                const oversDisplay = `${Math.floor(ballsBowled / 6)}.${ballsBowled % 6}`;
+                const econ = ballsBowled > 0 ? ((p.runsConceded / ballsBowled) * 6).toFixed(2) : '0.00';
+                const rowClass = p.id === currentBowler ? 'bg-teal-100 font-bold' : '';
+                return `<tr class="${rowClass}"><td class="px-4 py-2 whitespace-nowrap">${p.name}</td><td class="px-4 py-2 text-center">${oversDisplay}</td><td class="px-4 py-2 text-center">${p.maidens}</td><td class="px-4 py-2 text-center">${p.runsConceded}</td><td class="px-4 py-2 text-center">${p.wickets}</td><td class="px-4 py-2 text-center">${econ}</td></tr>`;
+            }).join('');
+
+            this.elements.fowDisplay.innerHTML = this.state.fallOfWickets.map(fow => `<p>${fow}</p>`).join('');
+            
+            this.elements.thisOverDisplay.innerHTML = this.state.thisOver.map(ball => {
+                let ballClass = 'ball-run';
+                if (ball === 'W') ballClass = 'ball-wicket';
+                if (ball === 'Wd' || ball === 'Nb') ballClass = 'ball-extra';
+                return `<div class="ball-tag ${ballClass}">${ball}</div>`;
+            }).join('');
+            
+            this.elements.oversSummaryDisplay.innerHTML = this.state.oversHistory.map(o => {
+                const ballTags = o.balls.map(ball => {
+                    let ballClass = 'ball-run';
+                    if (ball === 'W') ballClass = 'ball-wicket';
+                    if (ball === 'Wd' || ball === 'Nb') ballClass = 'ball-extra';
+                    return `<div class="ball-tag !w-8 !h-8 !text-xs ${ballClass}">${ball}</div>`;
+                }).join('');
+                return `<div class="flex items-center gap-3"><div class="font-bold w-16">Over ${o.over}:</div><div class="flex items-center space-x-1">${ballTags}</div></div>`;
+            }).join('');
+
+            if(this.state.isMatchOver) {
+                this.elements.scoringControls.classList.add('hidden');
+                this.elements.matchResultDisplay.textContent = this.state.matchResult;
+            } else {
+                this.elements.scoringControls.classList.remove('hidden');
+                this.elements.matchResultDisplay.textContent = '';
+            }
+        }
+    };
+
+    App.init();
+});
+</script>
+
+</body>
+</html>
