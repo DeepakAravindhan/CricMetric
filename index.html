@@ -270,6 +270,10 @@
                         <option>Hit Wicket</option>
                     </select>
                 </div>
+                <div id="run-out-runs-container" class="hidden">
+                    <label for="run-out-runs-input" class="block text-sm font-medium text-slate-300">Completed Runs:</label>
+                    <input type="number" id="run-out-runs-input" class="setup-input mt-1" value="0" min="0" max="6">
+                </div>
                 <div id="fielder-container" class="hidden">
                     <label id="fielder-label" for="fielder-select" class="block text-sm font-medium text-slate-300">Fielder:</label>
                     <select id="fielder-select" class="setup-input mt-1"></select>
@@ -348,6 +352,8 @@
                 newBatsmanContainer: document.getElementById('new-batsman-container'),
                 newBatsmanSelect: document.getElementById('new-batsman-select'),
                 confirmWicketBtn: document.getElementById('confirm-wicket-btn'),
+                runOutRunsContainer: document.getElementById('run-out-runs-container'),
+                runOutRunsInput: document.getElementById('run-out-runs-input'),
                 fullScorecardModal: document.getElementById('full-scorecard-modal'),
                 fullScorecardContent: document.getElementById('full-scorecard-content'),
                 closeFullScorecardBtn: document.getElementById('close-full-scorecard-btn'),
@@ -389,6 +395,7 @@
                     target: null,
                     matchResult: '',
                     innings1Data: null,
+                    isNoBallMode: false,
                 };
                 this.history = [];
             },
@@ -398,6 +405,12 @@
             },
 
             undo() {
+                if (this.state.isNoBallMode) {
+                    this.state.isNoBallMode = false;
+                    this.elements.noballBtn.classList.remove('bg-pink-500', 'animate-pulse');
+                    this.elements.noballBtn.textContent = 'No Ball';
+                    return;
+                }
                 if (this.history.length > 1) {
                     this.history.pop();
                     this.state = this.history[this.history.length - 1];
@@ -415,12 +428,34 @@
                 this.elements.closeFullScorecardBtn.addEventListener('click', () => this.closeModal(this.elements.fullScorecardModal));
                 
                 this.elements.runBtns.forEach(btn => {
-                    btn.addEventListener('click', () => this.addDelivery({ runs: parseInt(btn.dataset.run) }));
+                    btn.addEventListener('click', () => {
+                        const runs = parseInt(btn.dataset.run);
+                        if (this.state.isNoBallMode) {
+                            this.addDelivery({ runs: runs, isExtra: true, extraType: 'Nb', isNoBall: true });
+                            this.state.isNoBallMode = false;
+                            this.elements.noballBtn.classList.remove('bg-pink-500', 'animate-pulse');
+                            this.elements.noballBtn.textContent = 'No Ball';
+                        } else {
+                            this.addDelivery({ runs: runs });
+                        }
+                    });
+                });
+                
+                this.elements.wideBtn.addEventListener('click', () => {
+                     if (this.state.isNoBallMode) return;
+                     this.addDelivery({ runs: 0, isExtra: true, extraType: 'Wd' });
                 });
 
-                this.elements.wideBtn.addEventListener('click', () => this.addDelivery({ runs: 1, isExtra: true, extraType: 'Wd' }));
-                this.elements.noballBtn.addEventListener('click', () => this.addDelivery({ runs: 1, isExtra: true, extraType: 'Nb', isNoBall: true }));
-                this.elements.wicketBtn.addEventListener('click', () => this.openWicketModal());
+                this.elements.noballBtn.addEventListener('click', () => {
+                    this.state.isNoBallMode = true;
+                    this.elements.noballBtn.classList.add('bg-pink-500', 'animate-pulse');
+                    this.elements.noballBtn.textContent = 'Enter Runs...';
+                });
+
+                this.elements.wicketBtn.addEventListener('click', () => {
+                     if (this.state.isNoBallMode) return;
+                     this.openWicketModal()
+                });
 
                 this.elements.confirmPlayersBtn.addEventListener('click', () => this.confirmPlayers());
                 this.elements.confirmWicketBtn.addEventListener('click', () => this.confirmWicket());
@@ -432,18 +467,13 @@
                 this.state.totalOvers = parseInt(this.elements.totalOversInput.value, 10) || 20;
                 this.state.teamA.name = this.elements.teamAName.value.trim() || 'Team A';
                 this.state.teamB.name = this.elements.teamBName.value.trim() || 'Team B';
-
                 const createPlayer = (prefix, i) => ({ id: `${prefix}${i}`, name: `Player ${prefix}${i+1}`, runs: 0, balls: 0, fours: 0, sixes: 0, status: 'Did not bat', ballsBowled: 0, maidens: 0, runsConceded: 0, wickets: 0 });
-                
                 this.state.teamA.players = Array.from(this.elements.teamAPlayers.querySelectorAll('input')).map((input, i) => ({ ...createPlayer('A', i), name: input.value.trim() || `Player A${i+1}` }));
                 this.state.teamB.players = Array.from(this.elements.teamBPlayers.querySelectorAll('input')).map((input, i) => ({ ...createPlayer('B', i), name: input.value.trim() || `Player B${i+1}` }));
-
                 this.state.battingTeam = this.state.teamA;
                 this.state.bowlingTeam = this.state.teamB;
-
                 this.elements.setupScreen.classList.add('hidden');
                 this.elements.scorecardScreen.classList.remove('hidden');
-                
                 this.saveState();
                 this.openPlayerSelectionModal("Select Opening Players");
             },
@@ -468,15 +498,12 @@
                         }
                     });
                 };
-                
                 populateSelect(this.elements.onStrikeSelect, this.state.battingTeam.players);
                 populateSelect(this.elements.nonStrikerSelect, this.state.battingTeam.players, [this.elements.onStrikeSelect.value]);
                 populateSelect(this.elements.bowlerSelect, this.state.bowlingTeam.players, [this.state.currentBowler]);
-
                 this.elements.onStrikeSelect.onchange = () => {
                     populateSelect(this.elements.nonStrikerSelect, this.state.battingTeam.players, [this.elements.onStrikeSelect.value]);
                 };
-
                 this.openModal(this.elements.playerSelectionModal);
             },
 
@@ -484,10 +511,8 @@
                 this.state.onStrikeBatsman = this.elements.onStrikeSelect.value;
                 this.state.nonStrikeBatsman = this.elements.nonStrikerSelect.value;
                 this.state.currentBowler = this.elements.bowlerSelect.value;
-                
                 if (this.findPlayer(this.state.onStrikeBatsman).status === 'Did not bat') this.findPlayer(this.state.onStrikeBatsman).status = 'Not Out';
                 if (this.findPlayer(this.state.nonStrikeBatsman).status === 'Did not bat') this.findPlayer(this.state.nonStrikeBatsman).status = 'Not Out';
-
                 this.closeModal(this.elements.playerSelectionModal);
                 this.saveState();
                 this.render();
@@ -496,28 +521,27 @@
             handleDismissalTypeChange(type) {
                 if (type === 'Caught' || type === 'Stumped' || type === 'Run Out') {
                     this.elements.fielderContainer.classList.remove('hidden');
-                    this.elements.fielderLabel.textContent = type === 'Caught' ? 'Fielder:' : 'Keeper/Fielder:';
-                    this.elements.fielderSelect.innerHTML = this.state.bowlingTeam.players
-                        .map(p => `<option value="${p.id}">${p.name}</option>`).join('');
+                    this.elements.fielderLabel.textContent = (type === 'Run Out' || type === 'Caught') ? 'Fielder:' : 'Keeper:';
+                    this.elements.fielderSelect.innerHTML = this.state.bowlingTeam.players.map(p => `<option value="${p.id}">${p.name}</option>`).join('');
                 } else {
                     this.elements.fielderContainer.classList.add('hidden');
+                }
+                if (type === 'Run Out') {
+                    this.elements.runOutRunsContainer.classList.remove('hidden');
+                } else {
+                    this.elements.runOutRunsContainer.classList.add('hidden');
                 }
             },
             
             openWicketModal() {
-                this.elements.playerOutSelect.innerHTML = `
-                    <option value="${this.state.onStrikeBatsman}">${this.findPlayer(this.state.onStrikeBatsman).name}</option>
-                    <option value="${this.state.nonStrikeBatsman}">${this.findPlayer(this.state.nonStrikeBatsman).name}</option>
-                `;
+                this.elements.playerOutSelect.innerHTML = `<option value="${this.state.onStrikeBatsman}">${this.findPlayer(this.state.onStrikeBatsman).name}</option><option value="${this.state.nonStrikeBatsman}">${this.findPlayer(this.state.nonStrikeBatsman).name}</option>`;
                 const nextBatsmen = this.state.battingTeam.players.filter(p => p.status === 'Did not bat');
                 this.elements.newBatsmanSelect.innerHTML = nextBatsmen.map(p => `<option value="${p.id}">${p.name}</option>`).join('');
-
                 if (nextBatsmen.length === 0 || this.state.wickets >= 10) {
                     this.elements.newBatsmanContainer.classList.add('hidden');
                 } else {
                     this.elements.newBatsmanContainer.classList.remove('hidden');
                 }
-                
                 this.handleDismissalTypeChange(this.elements.dismissalTypeSelect.value);
                 this.openModal(this.elements.wicketModal);
             },
@@ -525,11 +549,14 @@
             confirmWicket() {
                 const playerOutId = this.elements.playerOutSelect.value;
                 const dismissalType = this.elements.dismissalTypeSelect.value;
-                const fielderId = (dismissalType === 'Caught' || dismissalType === 'Stumped' || dismissalType === 'Run Out') ? this.elements.fielderSelect.value : null;
+                const fielderId = (['Caught', 'Stumped', 'Run Out'].includes(dismissalType)) ? this.elements.fielderSelect.value : null;
                 const newBatsmanId = this.elements.newBatsmanSelect.value;
-                
+                let runsOnWicket = 0;
+                if (dismissalType === 'Run Out') {
+                    runsOnWicket = parseInt(this.elements.runOutRunsInput.value, 10) || 0;
+                }
                 this.closeModal(this.elements.wicketModal);
-                this.addDelivery({ runs: 0, isWicket: true, playerOutId, dismissalType, fielderId, newBatsmanId });
+                this.addDelivery({ runs: runsOnWicket, isWicket: true, playerOutId, dismissalType, fielderId, newBatsmanId });
             },
 
             findPlayer(id) {
@@ -543,18 +570,16 @@
                 const bowler = this.findPlayer(this.state.currentBowler);
                 const onStrike = this.findPlayer(this.state.onStrikeBatsman);
 
-                // Update score and bowler stats
                 this.state.score += delivery.runs;
                 bowler.runsConceded += delivery.runs;
                 if (!delivery.isExtra || delivery.isNoBall) {
                      this.state.thisOverRuns += delivery.runs;
                 }
                 
-                // Handle ball type (legal, extra, etc.)
                 if (delivery.isExtra) {
                     this.state.thisOver.push({ type: 'extra', value: delivery.extraType, runs: delivery.runs });
-                    if(delivery.isNoBall){
-                        onStrike.runs += (delivery.runs-1); 
+                    if (delivery.isNoBall) {
+                        onStrike.runs += delivery.runs;
                     }
                 } else {
                     this.state.balls++;
@@ -574,18 +599,15 @@
 
                     switch(delivery.dismissalType) {
                         case 'Caught':
-                            const fielder = this.findPlayer(delivery.fielderId);
-                            dismissalString = `c ${fielder.name} b ${bowlerName}`;
+                            dismissalString = `c ${this.findPlayer(delivery.fielderId).name} b ${bowlerName}`;
                             bowler.wickets++;
                             break;
                         case 'Stumped':
-                            const keeper = this.findPlayer(delivery.fielderId);
-                            dismissalString = `st ${keeper.name} b ${bowlerName}`;
+                            dismissalString = `st ${this.findPlayer(delivery.fielderId).name} b ${bowlerName}`;
                             bowler.wickets++;
                             break;
                         case 'Run Out':
-                             const runOutFielder = this.findPlayer(delivery.fielderId);
-                             dismissalString = `run out (${runOutFielder.name})`;
+                             dismissalString = `run out (${this.findPlayer(delivery.fielderId).name})`;
                              break;
                         case 'Bowled':
                             dismissalString = `b ${bowlerName}`;
@@ -648,14 +670,9 @@
                         finalHistory.push({ over: this.state.overs + 1, balls: this.state.thisOver });
                     }
                     this.state.innings1Data = JSON.parse(JSON.stringify({
-                        battingTeam: this.state.battingTeam,
-                        bowlingTeam: this.state.bowlingTeam,
-                        score: this.state.score,
-                        wickets: this.state.wickets,
-                        overs: this.state.overs,
-                        balls: this.state.balls,
-                        oversHistory: finalHistory,
-                        fallOfWickets: this.state.fallOfWickets
+                        battingTeam: this.state.battingTeam, bowlingTeam: this.state.bowlingTeam, score: this.state.score,
+                        wickets: this.state.wickets, overs: this.state.overs, balls: this.state.balls,
+                        oversHistory: finalHistory, fallOfWickets: this.state.fallOfWickets
                     }));
 
                     alert(`Innings 1 Over! ${this.state.battingTeam.name} scored ${this.state.score}/${this.state.wickets}. Target for ${this.state.bowlingTeam.name} is ${this.state.score + 1}.`);
@@ -695,14 +712,9 @@
                          content += this.getInningsScorecardHTML(this.state.innings1Data, 1, false);
                     }
                      const currentInningsData = {
-                        battingTeam: this.state.battingTeam,
-                        bowlingTeam: this.state.bowlingTeam,
-                        score: this.state.score,
-                        wickets: this.state.wickets,
-                        overs: this.state.overs,
-                        balls: this.state.balls,
+                        battingTeam: this.state.battingTeam, bowlingTeam: this.state.bowlingTeam, score: this.state.score, wickets: this.state.wickets,
+                        overs: this.state.overs, balls: this.state.balls, fallOfWickets: this.state.fallOfWickets,
                         oversHistory: [...this.state.oversHistory, ...(this.state.thisOver.length > 0 ? [{over: this.state.overs + 1, balls: this.state.thisOver}] : [])],
-                        fallOfWickets: this.state.fallOfWickets
                     };
                     content += this.getInningsScorecardHTML(currentInningsData, this.state.innings, false);
                     return content;
@@ -725,11 +737,9 @@
 
                 const oversSummaryRows = (oversHistory || []).map(o => {
                     const ballTags = o.balls.map(ball => {
-                        let ballClass = '';
-                        let ballValue = ball.value;
+                        let ballClass = '', ballValue = ball.value;
                         if(ball.type === 'extra') {
-                            ballClass = 'ball-extra';
-                            ballValue = `${ball.runs-1}${ball.value}`
+                            ballClass = 'ball-extra'; ballValue = (ball.value === 'Nb') ? `${ball.runs}Nb` : 'Wd';
                         } else {
                              switch(ball.value) {
                                 case 'W': ballClass = 'ball-wicket'; break;
@@ -747,22 +757,10 @@
                 return `
                     <div>
                         <h3 class="text-2xl font-bold mb-4 text-indigo-400">${battingTeam.name} - Innings ${inningsNum} (${score}/${wickets} in ${overs}.${balls} overs)</h3>
-                        <div class="mb-6">
-                            <h4 class="text-lg font-semibold mb-2 text-slate-200">Batting</h4>
-                            <div class="glass-panel !rounded-lg overflow-hidden"><table class="w-full text-sm text-left"><thead class="bg-slate-900/50"><tr><th class="table-header-cell !text-left">Batsman</th><th class="table-header-cell">R</th><th class="table-header-cell">B</th><th class="table-header-cell">4s</th><th class="table-header-cell">6s</th><th class="table-header-cell">SR</th></tr></thead><tbody>${battingRows}</tbody></table></div>
-                        </div>
-                        <div class="mb-6">
-                           <h4 class="text-lg font-semibold mb-2 text-slate-200">Fall of Wickets</h4>
-                           <div class="glass-panel !rounded-lg p-4 space-y-1 text-sm">${fowRows}</div>
-                        </div>
-                        <div class="mb-6">
-                            <h4 class="text-lg font-semibold mb-2 text-slate-200">Bowling</h4>
-                             <div class="glass-panel !rounded-lg overflow-hidden"><table class="w-full text-sm text-left"><thead class="bg-slate-900/50"><tr><th class="table-header-cell !text-left">Bowler</th><th class="table-header-cell">O</th><th class="table-header-cell">M</th><th class="table-header-cell">R</th><th class="table-header-cell">W</th><th class="table-header-cell">Econ</th></tr></thead><tbody>${bowlingRows}</tbody></table></div>
-                        </div>
-                        <div>
-                            <h4 class="text-lg font-semibold mb-2 text-slate-200">Overs Summary</h4>
-                             <div class="glass-panel !rounded-lg p-4 space-y-1">${oversSummaryRows}</div>
-                        </div>
+                        <div class="mb-6"><h4 class="text-lg font-semibold mb-2 text-slate-200">Batting</h4><div class="glass-panel !rounded-lg overflow-hidden"><table class="w-full text-sm text-left"><thead class="bg-slate-900/50"><tr><th class="table-header-cell !text-left">Batsman</th><th class="table-header-cell">R</th><th class="table-header-cell">B</th><th class="table-header-cell">4s</th><th class="table-header-cell">6s</th><th class="table-header-cell">SR</th></tr></thead><tbody>${battingRows}</tbody></table></div></div>
+                        <div class="mb-6"><h4 class="text-lg font-semibold mb-2 text-slate-200">Fall of Wickets</h4><div class="glass-panel !rounded-lg p-4 space-y-1 text-sm">${fowRows}</div></div>
+                        <div class="mb-6"><h4 class="text-lg font-semibold mb-2 text-slate-200">Bowling</h4><div class="glass-panel !rounded-lg overflow-hidden"><table class="w-full text-sm text-left"><thead class="bg-slate-900/50"><tr><th class="table-header-cell !text-left">Bowler</th><th class="table-header-cell">O</th><th class="table-header-cell">M</th><th class="table-header-cell">R</th><th class="table-header-cell">W</th><th class="table-header-cell">Econ</th></tr></thead><tbody>${bowlingRows}</tbody></table></div></div>
+                        <div><h4 class="text-lg font-semibold mb-2 text-slate-200">Overs Summary</h4><div class="glass-panel !rounded-lg p-4 space-y-1">${oversSummaryRows}</div></div>
                     </div>
                 `;
             },
@@ -808,7 +806,6 @@
 
                 this.elements.fowDisplay.innerHTML = this.state.fallOfWickets.map(fow => `<p>${fow}</p>`).join('');
                 
-                // --- NEW LOGIC FOR LIVE OVERS SUMMARY ---
                 const liveOversHistory = [...this.state.oversHistory];
                 if (this.state.thisOver.length > 0) {
                     liveOversHistory.push({ over: this.state.overs + 1, balls: this.state.thisOver });
@@ -816,11 +813,10 @@
 
                 this.elements.oversSummaryDisplay.innerHTML = liveOversHistory.map(o => {
                     const ballTags = o.balls.map(ball => {
-                        let ballClass = '';
-                        let ballValue = ball.value;
-                        if(ball.type === 'extra') {
+                        let ballClass = '', ballValue = ball.value;
+                        if (ball.type === 'extra') {
                             ballClass = 'ball-extra';
-                            ballValue = `${ball.runs-1}${ball.value}`
+                            ballValue = (ball.value === 'Nb') ? `${ball.runs}Nb` : 'Wd';
                         } else {
                              switch(ball.value) {
                                 case 'W': ballClass = 'ball-wicket'; break;
